@@ -12,15 +12,14 @@
 	--icon-size-minified: 20px;
 	--gap-size-minified: 5px;
 
-	padding-left: 0;
-	padding-top: 5px;
-	padding-bottom: 0;
+	padding: 0;
 	display: flex;
 	flex-wrap: wrap;
 	transition: var(--presence-tracker-transition);
 	max-width: 100%;
 	min-width: 100px;
 	width: fit-content;
+	align-items: center;
 }
 
 #chat .mes_block .mes_presence_tracker:before {
@@ -28,7 +27,6 @@
 	vertical-align: middle;
 	text-align: center;
 	position: absolute;
-	margin-top: 3px;
 	z-index: 1;
 	color: var(--SmartThemeBodyColor);
 	font-weight: 900;
@@ -40,7 +38,6 @@
 }
 
 #chat .mes_block .mes_presence_tracker:hover:before {
-	margin-top: 3px;
 	font-size: 52px;
 	opacity: 0%;
 }

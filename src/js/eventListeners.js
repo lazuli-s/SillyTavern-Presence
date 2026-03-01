@@ -22,15 +22,15 @@ export function startListeners() {
         log("USER_MESSAGE_RENDERED", args);
 
         if (!isActive()) return;
-       
+
         onChatChanged();
     });
 
-    eventSource.on(event_types.GENERATION_AFTER_COMMANDS, async function (...args) {
+    eventSource.makeFirst(event_types.GENERATION_AFTER_COMMANDS, async function (...args) {
         log("GENERATION_AFTER_COMMANDS", args);
 
         if (!isActive()) return;
-       
+
         await onGenerationAfterCommands(...args);
     });
 
@@ -38,7 +38,7 @@ export function startListeners() {
         log("MESSAGE_RECEIVED", args);
 
         if (!isActive()) return;
-       
+
         await onNewMessage(...args);
         await toggleVisibilityAllMessages(true);
     });
@@ -47,7 +47,7 @@ export function startListeners() {
         log("MESSAGE_SENT", args);
 
         if (!isActive()) return;
-       
+
         await onNewMessage(...args);
     });
 
@@ -55,7 +55,7 @@ export function startListeners() {
         log("GENERATION_STOPPED", args);
 
         if (!isActive()) return;
-       
+
         await toggleVisibilityAllMessages(true);
     });
 }
