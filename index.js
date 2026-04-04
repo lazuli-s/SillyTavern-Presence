@@ -1,4 +1,4 @@
-import {characters, chat, chat_metadata, eventSource, event_types, saveChatDebounced, saveSettingsDebounced, this_chid} from "../../../../script.js";
+import {characters, chat, chat_metadata, eventSource, event_types, saveChatDebounced, saveSettingsDebounced} from "../../../../script.js";
 import {groups, is_group_generating, selected_group} from "../../../../scripts/group-chats.js";
 import {hideChatMessageRange} from "../../../chats.js";
 import {extension_settings} from "../../../extensions.js";
@@ -8,7 +8,7 @@ import * as slashCommands from "./src/js/slashCommands.js";
 // @ts-check
 
 /**
- * @typedef {ChatMessage & { present?: string[], presence_manually_hidden?: boolean }} ChatMessageExtended
+ * @typedef {ChatMessage & {present?: string[]; presence_manually_hidden?: boolean;}} ChatMessageExtended
  */
 
 const extensionName = "Presence";
@@ -99,15 +99,22 @@ export async function onNewMessage(mesId) {
 	/** @type {ChatMessageExtended} */
 	const mes = chat[mesId];
     const participants = await getCurrentParticipants();
+	const this_chid = context().characterId;
 
-    if (this_chid !== undefined) {
+	const thumbnail = new URL(mes.force_avatar, window.location.origin);
+	const urlType = thumbnail?.searchParams?.get('type') ?? '';
+	const urlFile = thumbnail?.searchParams?.get('file') ?? '';
+	const isUser = urlType === 'persona';
+
+    if (this_chid !== undefined && !isUser && urlFile) {
         const character = characters[this_chid];
-        const isCharActive = participants.present.includes(character.avatar);
+		const isCharMessage = urlFile === character.avatar || mes.original_avatar === character.avatar;
+	    const isCharActive = participants.present.includes(character.avatar);
 
-        if (isCharActive) mes.present = [...participants.present];
-        else mes.present = character?.avatar ? [character.avatar] : [];
+        if (isCharMessage && !isCharActive) mes.present = character?.avatar ? [character.avatar] : [];
+        else mes.present = structuredClone(participants.present);
     } else {
-        mes.present = [...participants.present];
+        mes.present = structuredClone(participants.present);
     }
 
 	if(extensionSettings.seeLast && !mes.is_user) {
