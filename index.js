@@ -14,7 +14,7 @@ import * as slashCommands from "./src/js/slashCommands.js";
 const extensionName = "Presence";
 const extensionNameLong = `SillyTavern-${extensionName}`;
 const extensionFolderPath = `scripts/extensions/third-party/${extensionNameLong}`;
-const context = SillyTavern.getContext();
+const context = SillyTavern.getContext;
 const extensionSettings = extension_settings[extensionName];
 const defaultSettings = {
 	enabled: true,
@@ -25,6 +25,11 @@ const defaultSettings = {
     universalTrackerOn: false,
     disableTransition: false
 };
+
+const {
+	eventTypes,
+	macros
+} = context();
 
 // * Debug Methods
 
@@ -74,8 +79,10 @@ export function isActive() {
 	return selected_group != null && extensionSettings.enabled;
 }
 
-export async function getCurrentParticipants() {
+export function getCurrentParticipants() {
 	const group = groups.find((g) => g.id == selected_group);
+
+	if (!group) return { members: [], present: [] };
 
 	var active = [...group.members];
 
@@ -373,13 +380,13 @@ function toggleMessagesManuallyHiddenFlag(e) {
 
 function initExtensionSettings() {
 
-	if (!context.extensionSettings[extensionName]) {
-	    context.extensionSettings[extensionName] = structuredClone(defaultSettings);
+	if (!context().extensionSettings[extensionName]) {
+	    context().extensionSettings[extensionName] = structuredClone(defaultSettings);
 	}
 
 	for (const key of Object.keys(defaultSettings)) {
-	    if (context.extensionSettings[extensionName][key] === undefined) {
-		   context.extensionSettings[extensionName][key] = defaultSettings[key];
+	    if (context().extensionSettings[extensionName][key] === undefined) {
+		   context().extensionSettings[extensionName][key] = defaultSettings[key];
 	    }
 	}
 }
@@ -397,7 +404,7 @@ async function updatePresenceTrackingButton(member) {
 	}
 }
 
-jQuery(async () => {
+eventSource.once(eventTypes.APP_INITIALIZED, async function () {
 	const groupMemberTemplateIcons = $('.group_member_icon');
 	const ignorePresenceButton = $(`<div title="Ignore Presence" class="ignore_presence_toggle fa-solid fa-eye-slash right_menu_button fa-lg interactable" tabindex="0"></div>`);
 
@@ -485,4 +492,30 @@ jQuery(async () => {
 		extensionSettings.universalTrackerOn = $(e.target).prop("checked");
 		saveSettingsDebounced();
 	});
+
+	if ('macros' in context()) {
+		const { category } = macros;
+
+		macros.register('groupPresent', {
+			handler: function () {
+				const participants = getCurrentParticipants().present;
+				const characters = participants.map((avatar) => {
+					const character = context().characters
+						.find(char => char.avatar === avatar);
+
+					return character ? character.name : null;
+				});
+
+				const charactersFiltered = characters.filter(name => name !== null);
+
+				if (charactersFiltered.length > 0)
+					return charactersFiltered.join(', ');
+
+				return '';
+			},
+			category: category.NAMES,
+			description: 'Returns the names of characters present, detected by Presence, in the current group chat.',
+			returns: 'list of character names'
+		});
+	}
 });
