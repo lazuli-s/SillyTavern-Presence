@@ -13,12 +13,6 @@ import { t } from "../../../../../i18n.js";
  * @typedef {ChatMessage & { present?: string[], presence_manually_hidden?: boolean }} ChatMessageExtended
  */
 
-/** @type {Function} */
-toastr.error
-
-/** @type {Function} */
-toastr.warning
-
 async function commandForget(namedArgs, message_id) {
     if (!isActive()) return;
 
@@ -162,7 +156,22 @@ async function commandRememberAll(namedArgs, charName) {
     await addPresenceTrackerToMessages(true);
 };
 
-async function commandReplace({ name = "", replace = "", forget = true } = {}, message_id) {
+const isFileNameRegex = /\.[a-z]+$/;
+
+function sanitizeCharID(str) {
+    return str.replace(/(\.\w+)$/i, '');
+}
+
+function searchCharNameOrAvatar(char, search) {
+    try {
+        const isFile = isFileNameRegex.test(search);
+        return char[isFile ? 'avatar' : 'name'] === search;
+    } catch (error) {
+        return false;
+    }
+}
+
+async function commandReplace({ name = "", replace = "", forget = true, forceName = false } = {}, message_id) {
     if (!isActive()) return;
 
     const characterName = String(name).trim();
@@ -170,11 +179,10 @@ async function commandReplace({ name = "", replace = "", forget = true } = {}, m
     const doForget = String(forget).trim().toLowerCase() === "true";
     const messages_number = String(message_id).trim().includes("-") ? stringToRange(message_id, 0, chat.length - 1) : Number(message_id);
 
-    if (characterName.length === 0 || replaceName.length === 0) return toastr.warning(t`Character name or replace not valid`);
+    if (!characterName.length || !replaceName.length) return toastr.warning(t`Character name or replace not valid`);
 
-    const sanitize = (str) => str.replace(/(\.\w+)$/i, "");
-    const character = characters.find((character) => character.name === characterName)?.avatar;
-    const replacer = characters.find((character) => character.name === replaceName)?.avatar;
+    const character = forceName ? characterName : characters.find((character) => searchCharNameOrAvatar(character, characterName))?.avatar;
+    const replacer = characters.find((character) => searchCharNameOrAvatar(character, replaceName))?.avatar;
 
     if (!character || !replacer) {
         toastr.error("Character or replacer not found - check the console for more details");
@@ -192,11 +200,11 @@ async function commandReplace({ name = "", replace = "", forget = true } = {}, m
 
         if (!mess.present) mess.present = [];
 
-        const isPresent = mess.present.some((ch_name) => sanitize(ch_name) === sanitize(character));
-        const isReplacerPresent = mess.present.some((ch_name) => sanitize(ch_name) === sanitize(replacer));
+        const isPresent = mess.present.some((ch_name) => sanitizeCharID(ch_name) === sanitizeCharID(character));
+        const isReplacerPresent = mess.present.some((ch_name) => sanitizeCharID(ch_name) === sanitizeCharID(replacer));
 
         if (isPresent && !isReplacerPresent) mess.present.push(replacer);
-        if (isPresent && doForget) mess.present = mess.present.filter((ch_name) => sanitize(ch_name) !== sanitize(character));
+        if (isPresent && doForget) mess.present = mess.present.filter((ch_name) => sanitizeCharID(ch_name) !== sanitizeCharID(character));
 
         log(`Moved messages from ${characterName} to ${replaceName} (forget=${doForget})`);
 
@@ -215,11 +223,11 @@ async function commandReplace({ name = "", replace = "", forget = true } = {}, m
     for (const mess of messages_to_process) {
         if (!mess.present) mess.present = [];
 
-        const isPresent = mess.present.some((ch_name) => sanitize(ch_name) === sanitize(character));
-        const isReplacerPresent = mess.present.some((ch_name) => sanitize(ch_name) === sanitize(replacer));
+        const isPresent = mess.present.some((ch_name) => sanitizeCharID(ch_name) === sanitizeCharID(character));
+        const isReplacerPresent = mess.present.some((ch_name) => sanitizeCharID(ch_name) === sanitizeCharID(replacer));
 
         if (isPresent && !isReplacerPresent) mess.present.push(replacer);
-        if (isPresent && doForget) mess.present = mess.present.filter((ch_name) => sanitize(ch_name) !== sanitize(character));
+        if (isPresent && doForget) mess.present = mess.present.filter((ch_name) => sanitizeCharID(ch_name) !== sanitizeCharID(character));
     }
 
     log(`Moved messages from ${characterName} to ${replaceName} (forget=${doForget})`, {messages_to_process});
@@ -552,7 +560,14 @@ export function registerSlashCommands() {
                 }),
                 SlashCommandNamedArgument.fromProps({
                     name: 'forget',
-                    description: 'Make the original character forget the messages (boolean) - true by default',
+                    description: 'Make the original character forget the messages - true by default',
+                    typeList: [ARGUMENT_TYPE.BOOLEAN],
+                    isRequired: false,
+                    enumProvider: commonEnumProviders.boolean(),
+                }),
+                SlashCommandNamedArgument.fromProps({
+                    name: 'forceName',
+                    description: 'Skip checking if <code>name</code> is a valid character identifier - Used to move presence history from a character that no longer exists',
                     typeList: [ARGUMENT_TYPE.BOOLEAN],
                     isRequired: false,
                     enumProvider: commonEnumProviders.boolean(),
