@@ -7,7 +7,7 @@ export function startListeners() {
 
         if (!isActive()) return;
 
-        onChatChanged();
+        onChatChanged({forceUpdate: true});
     });
 
     eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async function (...args) {

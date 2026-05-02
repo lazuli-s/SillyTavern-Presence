@@ -218,17 +218,19 @@ export async function addPresenceTrackerToMessages(refresh = false) {
     };
 }
 
-export async function onChatChanged() {
-	$(document).off("mouseup touchend", "#show_more_messages", addPresenceTrackerToMessages);
+export async function onChatChanged({forceUpdate = false} = {}) {
+	// @ts-ignore
+	$(document).off('mouseup touchend', '#show_more_messages', addPresenceTrackerToMessages);
 
 	if (!isActive()) return;
-	await addPresenceTrackerToMessages(true);
+	await addPresenceTrackerToMessages(forceUpdate);
 
-	$("#rm_group_members .group_member").each((index, element) => {
+	$('#rm_group_members .group_member').each((index, element) => {
 		updatePresenceTrackingButton($(element));
 	});
 
-	$(document).on("mouseup touchend", "#show_more_messages", addPresenceTrackerToMessages);
+	// @ts-ignore
+	$(document).on('mouseup touchend', '#show_more_messages', addPresenceTrackerToMessages);
 }
 
 export async function onGenerationAfterCommands(type, config, dryRun) {
