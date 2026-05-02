@@ -7,11 +7,11 @@ import { SlashCommandParser } from "../../../../../slash-commands/SlashCommandPa
 import { stringToRange } from "../../../../../utils.js";
 import { t } from "../../../../../i18n.js";
 
-// @ts-check
-
 /**
  * @typedef {ChatMessage & { present?: string[], presence_manually_hidden?: boolean }} ChatMessageExtended
  */
+
+// * MARK:Methods
 
 async function commandForget(namedArgs, message_id) {
     if (!isActive()) return;
@@ -376,6 +376,8 @@ async function commandForceNonePresent(namedArgs, message_id) {
     saveChatDebounced();
     await addPresenceTrackerToMessages(true);
 };
+
+// * MARK:Init Commands
 
 export function registerSlashCommands() {
     SlashCommandParser.addCommandObject(
@@ -755,6 +757,29 @@ export function registerSlashCommands() {
                     </li>
                 </ul>
             </div>`,
+        })
+    );
+
+    SlashCommandParser.addCommandObject(
+        SlashCommand.fromProps({
+            name: 'presenceUpdateChatTrackers',
+            callback: async function () {
+                await addPresenceTrackerToMessages(false);
+                return '';
+            },
+            helpString: `
+            <div>
+                Updates the UI of presence trackers on all messages that are missing them.
+            </div>
+            <div>
+                <strong>Example:</strong>
+                <ul>
+                    <li>
+                        <pre><code>/presenceUpdateChatTrackers</code></pre>
+                    </li>
+                </ul>
+            </div>
+            `,
         })
     );
 }

@@ -138,7 +138,11 @@ export async function onNewMessage(mesId) {
 	await saveChatDebounced();
 }
 
-export async function addPresenceTrackerToMessages(refresh) {
+/**
+ * @param {boolean} [refresh=false] Whether to refresh existing presence trackers. Set to true when messages are added/removed from the chat, false when just updating presence info.
+ * @returns {Promise<void>}
+ */
+export async function addPresenceTrackerToMessages(refresh = false) {
 	if (refresh) {
 		let trackers = $("#chat .mes_presence_tracker");
 		let messages = trackers.closest(".mes");
