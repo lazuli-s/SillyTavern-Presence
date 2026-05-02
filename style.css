@@ -1,3 +1,35 @@
+.presence-custom-css {
+	.flex-container {
+		display: flex;
+		flex-wrap: nowrap;
+		gap: 5px;
+	}
+
+	label.flex-container {
+		gap: 10px;
+	}
+
+	.flex-column {
+		flex-direction: column;
+	}
+
+	.flex-container:not(.flex-column) {
+		align-items: center;
+	}
+
+	.flex-container b:first-child {
+		margin-bottom: 5px;
+	}
+
+	.m-0 {
+		margin: 0;
+	}
+
+	.p-15px {
+		padding: 15px;
+	}
+}
+
 #chat {
 	--presence-tracker-transition: linear 0.15s;
 }

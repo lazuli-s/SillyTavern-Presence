@@ -13,17 +13,7 @@ import {
 import { commonEnumProviders } from "../../../../../slash-commands/SlashCommandCommonEnumsProvider.js";
 import { stringToRange } from "../../../../../utils.js";
 
-const {
-    SlashCommand,
-    SlashCommandParser,
-    SlashCommandArgument,
-    SlashCommandNamedArgument,
-    ARGUMENT_TYPE,
-} = context();
-
-/**
- * @typedef {ChatMessage & { present?: string[], presence_manually_hidden?: boolean }} ChatMessageExtended
- */
+/** @typedef {Presence.ChatMessageExtended} ChatMessageExtended */
 
 // * MARK:Methods
 
@@ -405,7 +395,15 @@ async function commandForceNonePresent(namedArgs, message_id) {
 
 // * MARK:Init Commands
 
-export function registerSlashCommands() {
+export function initialize() {
+    const {
+        SlashCommand,
+        SlashCommandParser,
+        SlashCommandArgument,
+        SlashCommandNamedArgument,
+        ARGUMENT_TYPE,
+    } = context();
+
     SlashCommandParser.addCommandObject(
         SlashCommand.fromProps({
             name: "presenceForget",

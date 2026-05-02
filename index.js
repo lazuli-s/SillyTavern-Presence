@@ -1,14 +1,17 @@
-import {saveChatDebounced} from "../../../../script.js";
-import {is_group_generating} from "../../../../scripts/group-chats.js";
-import {hideChatMessageRange} from "../../../chats.js";
-import * as eventListeners from "./src/js/eventListeners.js";
-import * as slashCommands from "./src/js/slashCommands.js";
+import {saveChatDebounced} from '../../../../script.js';
+import {is_group_generating} from '../../../../scripts/group-chats.js';
+import {hideChatMessageRange} from '../../../chats.js';
+import * as eventListeners from './src/js/eventListeners.js';
+import * as slashCommands from './src/js/slashCommands.js';
+import * as presenceMacros from './src/js/macros.js';
 
 export {
 	context,
 	log,
 	warn,
 	debug,
+	getCurrentParticipants,
+	isActive,
 	eventTypes,
 	eventSource,
 	saveChatDebounced,
@@ -17,14 +20,12 @@ export {
 
 // @ts-check
 
-/**
- * @typedef {ChatMessage & {present?: string[]; presence_manually_hidden?: boolean;}} ChatMessageExtended
- */
+/** @typedef {Presence.ChatMessageExtended} ChatMessageExtended */
+/** @typedef {Presence.ExtensionSettings} ExtensionSettings */
 
 const context = SillyTavern.getContext;
 
 const {
-	macros,
 	eventTypes,
 	eventSource,
 	saveSettingsDebounced,
@@ -33,32 +34,51 @@ const {
 	t
 } = context();
 
-const extensionName = "Presence";
-const extensionNameLong = `SillyTavern-${extensionName}`;
-const extensionFolderPath = `scripts/extensions/third-party/${extensionNameLong}`;
+
+const extensionName = 'Presence';
+const extensionFullName = `SillyTavern-${extensionName}`;
+const metadataName = extensionName.toLowerCase().replaceAll('-', '_');
+const htmlSuffix = extensionName.toLowerCase();
+const extensionFolderPath = `scripts/extensions/third-party/${extensionFullName}`;
+
+/** @type {ExtensionSettings} */
 const extensionSettings = extension_settings[extensionName];
+
+/** @type {ExtensionSettings} */
 const defaultSettings = {
 	enabled: true,
-	location: "top",
-	debugMode: false,
+	location: 'top',
 	seeLast: true,
 	includeMuted: false,
-    universalTrackerOn: false,
-    disableTransition: false
+    disableTransition: false,
+	debug: false,
 };
+
+const MetadataMap = {
+	universalTrackerOn: 'universal_tracker_on',
+}
 
 // * Debug Methods
 
-function log(...msg) {
-    if (extensionSettings.debugMode) console.log("[" + extensionName + "]", ...msg)
+/**
+ * @param {...any} messages
+ */
+function log(...messages) {
+    if (extensionSettings.debug) console.log(`[${extensionName} Log]`, ...messages)
 }
 
-function warn(...msg) {
-    console.warn("[" + extensionName + " Warning]", ...msg)
+/**
+ * @param {...any} messages
+ */
+function warn(...messages) {
+    if (extensionSettings.debug) console.warn(`[${extensionName} Warning]`, ...messages)
 }
 
-function debug(...msg) {
-	if (extensionSettings.debugMode) console.debug("[" + extensionName + " debug]", ...msg);
+/**
+ * @param {...any} messages
+ */
+function debug(...messages) {
+	if (extensionSettings.debug) console.debug(`[${extensionName} Debug]`, ...messages);
 }
 
 // * Extension Methods
@@ -102,7 +122,7 @@ const HTML_TEMPLATES = {
      */
     get: async function(fileName = 'settings', {clone = false} = {}) {
 		if (!HTML_TEMPLATES[fileName]) {
-            await $.get(`${extensionFolderPath}/html/${fileName}.html`)
+            await $.get(`${extensionFolderPath}/src/html/${fileName}.html`)
                 .done(function(response) {
                     HTML_TEMPLATES[fileName] = $(response);
                 })
@@ -124,11 +144,11 @@ const HTML_TEMPLATES = {
     }
 };
 
-export function isActive() {
+function isActive() {
 	return context().groupId != null && extensionSettings.enabled;
 }
 
-export function getCurrentParticipants() {
+function getCurrentParticipants() {
 	const {groupId, groups, chatMetadata} = context();
 	const group = groups.find((g) => g.id == groupId);
 
@@ -136,7 +156,7 @@ export function getCurrentParticipants() {
 
 	var active = [...group.members];
 
-    if (extensionSettings.universalTrackerOn) active.push('presence_universal_tracker');
+    if (chatMetadata[MetadataMap.universalTrackerOn]) active.push('presence_universal_tracker');
 
 	if (!extensionSettings.includeMuted)
 		active = active.filter(char => !group.disabled_members.includes(char));
@@ -441,21 +461,6 @@ function toggleMessagesManuallyHiddenFlag(e) {
 	saveChatDebounced();
 }
 
-// * Initialize Extension
-
-function initExtensionSettings() {
-
-	if (!context().extensionSettings[extensionName]) {
-	    context().extensionSettings[extensionName] = structuredClone(defaultSettings);
-	}
-
-	for (const key of Object.keys(defaultSettings)) {
-	    if (context().extensionSettings[extensionName][key] === undefined) {
-		   context().extensionSettings[extensionName][key] = defaultSettings[key];
-	    }
-	}
-}
-
 async function updatePresenceTrackingButton(member) {
 	if (!isActive()) return;
 
@@ -471,7 +476,126 @@ async function updatePresenceTrackingButton(member) {
 	}
 }
 
-eventSource.once(eventTypes.APP_INITIALIZED, async function () {
+// * MARK:Extension Settings
+
+const settingsCallbacks = {
+    /**	Triggers on enabled setting change. */
+    enabled: () => {
+        // Nothing by the moment
+    },
+
+	location: function () {
+		addPresenceTrackerToMessages(true);
+	},
+
+	disableTransition: function () {
+		$('#chat').toggleClass('no-presence-animations', extensionSettings.disableTransition);
+	},
+}
+
+/** Changes a setting value and triggers a callback if there's any on settingsCallbacks. */
+function settingsBooleanButton(event) {
+    const target = event.target;
+    const value = Boolean($(target).prop('checked'));
+    const setting = target.getAttribute(`${htmlSuffix}-setting`);
+    const callback = settingsCallbacks[setting];
+
+    extensionSettings[setting] = value;
+
+    if (callback) callback();
+
+    log('toggleSetting ' + setting, value);
+    saveSettingsDebounced();
+}
+
+/** Changes a string setting value and triggers a callback if there's any on settingsCallbacks. */
+function settingsTextButton(event) {
+    const target = event.target;
+    const value = String($(target).val());
+
+    const setting = target.getAttribute(`${htmlSuffix}-setting`);
+    const callback = settingsCallbacks[setting];
+
+    extensionSettings[setting] = value;
+
+    if (callback) callback();
+
+    log('toggleSetting ' + setting, value);
+    saveSettingsDebounced();
+}
+
+/** Changes a number setting value and triggers a callback if there's any on settingsCallbacks. */
+function settingsNumberButton(event) {
+    const target = /** @type {HTMLInputElement} */ (event.target);
+    const raw_value = isNaN(target.valueAsNumber) ? 0 : target.valueAsNumber;
+    const insideMinBoundary = (target.min !== '') ? (Number(target.min) <= raw_value) : true;
+    const insideMaxBoundary = (target.max !== '') ? (Number(target.max) >= raw_value) : true;
+
+    let value = raw_value;
+
+    if (!insideMinBoundary) value = Number(target.min);
+    if (!insideMaxBoundary) value = Number(target.max);
+
+    const setting = target.getAttribute(`${htmlSuffix}-setting`);
+    const callback = settingsCallbacks[setting];
+
+    extensionSettings[setting] = value;
+
+    if (callback) callback();
+
+    log('toggleSetting ' + setting, value);
+    saveSettingsDebounced();
+}
+
+/**	Logs setting's values. */
+function displaySettings() {
+    debug(`The extension is ${extensionSettings.enabled ? 'enabled' : 'disabled'}`);
+
+    debug(`Debug mode is ${extensionSettings.debug ? 'active' : 'not active'}`);
+    debug(structuredClone(extensionSettings));
+}
+
+/** Append settings menu on ST and set listeners. */
+async function loadSettingsMenu() {
+    const settingsHtml = await HTML_TEMPLATES.get('settings');
+
+    // extensions_settings2 is an alternative
+    $('#extensions_settings').append(settingsHtml);
+
+    $(`#${htmlSuffix}-enabled`).on('input', settingsBooleanButton);
+
+	$(`#${htmlSuffix}-location`).on('change', settingsTextButton);
+	$(`#${htmlSuffix}-see-last`).on('input', settingsBooleanButton);
+	$(`#${htmlSuffix}-include-muted`).on('input', settingsBooleanButton);
+	$(`#${htmlSuffix}-disable-transition`).on('input', settingsBooleanButton);
+
+    $(`#${htmlSuffix}-debug`).on('input', settingsBooleanButton);
+    $(`#${htmlSuffix}-check-configuration`).on('click', displaySettings);
+
+    log('Settings menu created');
+
+    $(`#${htmlSuffix}-enabled`).prop('checked', extensionSettings.enabled).trigger('input');
+    $(`#${htmlSuffix}-location`).val(extensionSettings.location).trigger('change');
+    $(`#${htmlSuffix}-see-last`).prop('checked', extensionSettings.seeLast).trigger('input');
+    $(`#${htmlSuffix}-include-muted`).prop('checked', extensionSettings.includeMuted).trigger('input');
+    $(`#${htmlSuffix}-disable-transition`).prop('checked', extensionSettings.disableTransition).trigger('input');
+    $(`#${htmlSuffix}-debug`).prop('checked', extensionSettings.debug).trigger('input');
+
+    log('Settings values initialized', extensionSettings);
+}
+
+// * MARK:Initialization
+
+async function initializeFeatures() {
+    const universalTrackerAlwaysOn = await HTML_TEMPLATES.get('universalTrackerButton');
+	const universalTrackerContainer = $('#GroupFavDelOkBack div:has(#rm_group_automode_label)');
+
+	universalTrackerContainer.append(universalTrackerAlwaysOn);
+    universalTrackerAlwaysOn.on("change", (e) => {
+		context().chatMetadata[MetadataMap.universalTrackerOn] = $(e.target).prop("checked");
+		saveMetadataDebounced();
+	});
+
 	const groupMemberTemplateIcons = $('.group_member_icon');
 	const ignorePresenceButton = $(`<div title="Ignore Presence" class="ignore_presence_toggle fa-solid fa-eye-slash right_menu_button fa-lg interactable" tabindex="0"></div>`);
 
@@ -494,97 +618,22 @@ eventSource.once(eventTypes.APP_INITIALIZED, async function () {
 	});
 
 	observer.observe(groupMemberList, { childList: true, subtree: true });
+}
 
-	initExtensionSettings();
+eventSource.once(eventTypes.APP_INITIALIZED, async function () {
+    if (!context().extensionSettings[extensionName]) {
+        context().extensionSettings[extensionName] = structuredClone(defaultSettings);
+    }
 
-    eventListeners.startListeners();
-    slashCommands.registerSlashCommands();
+    for (const key of Object.keys(defaultSettings)) {
+        if (context().extensionSettings[extensionName][key] === undefined) {
+            context().extensionSettings[extensionName][key] = defaultSettings[key];
+        }
+    }
 
-	const settingsHtml = $(await $.get(`${extensionFolderPath}/html/settings.html`));
-
-	settingsHtml.find("#presence_enable").prop("checked", extensionSettings.enabled);
-	settingsHtml.find("#presence_enable").on("change", (e) => {
-		extensionSettings.enabled = $(e.target).prop("checked");
-		saveSettingsDebounced();
-	});
-
-	settingsHtml.find("#presence_location").val(extensionSettings.location);
-	settingsHtml.find("#presence_location").on("change", (e) => {
-		extensionSettings.location = $(e.target).val();
-		saveSettingsDebounced();
-		addPresenceTrackerToMessages(true);
-	});
-
-	settingsHtml.find("#presence_seeLast").on("input", function(e) {
-        extensionSettings.seeLast = Boolean($(e.target).prop("checked"));
-    });
-	settingsHtml.find("#presence_seeLast").on("change", (e) => {
-		extensionSettings.seeLast = $(e.target).prop("checked");
-		saveSettingsDebounced();
-	});
-
-	settingsHtml.find("#presence_includeMuted").prop("checked", extensionSettings.includeMuted);
-	settingsHtml.find("#presence_includeMuted").on("change", (e) => {
-		extensionSettings.includeMuted = $(e.target).prop("checked");
-		saveSettingsDebounced();
-	});
-
-	settingsHtml.find("#presence_disableTransition").prop("checked", extensionSettings.disableTransition);
-	settingsHtml.find("#presence_disableTransition").on("change", (e) => {
-        const checked = $(e.target).prop("checked");
-
-        $('#chat').toggleClass('no-presence-animations', checked);
-
-		extensionSettings.disableTransition = checked;
-		saveSettingsDebounced();
-	});
-
-	settingsHtml.find("#presence_debug").prop("checked", extensionSettings.debugMode);
-	settingsHtml.find("#presence_debug").on("change", (e) => {
-		extensionSettings.debugMode = $(e.target).prop("checked");
-		saveSettingsDebounced();
-	});
-
-	$("#extensions_settings").append(settingsHtml);
-    $("#presence_disableTransition").trigger('change');
-
-    const universalTrackerAlwaysOn = `
-        <label class="checkbox_label whitespacenowrap" title="Set the universal tracker to active for new messages" style="margin-top: 7px">
-            <input id="presence_universal_tracer_on" type="checkbox"/>
-            <span data-i18n="Universal Tracker">Universal Tracker</span>
-        </label>
-    `;
-
-    $('#GroupFavDelOkBack .flex1').append(universalTrackerAlwaysOn);
-	$('#presence_universal_tracer_on').prop("checked", extensionSettings.universalTrackerOn);
-    $('#presence_universal_tracer_on').on("change", (e) => {
-		extensionSettings.universalTrackerOn = $(e.target).prop("checked");
-		saveSettingsDebounced();
-	});
-
-	if ('macros' in context()) {
-		const { category } = macros;
-
-		macros.register('groupPresent', {
-			handler: function () {
-				const participants = getCurrentParticipants().present;
-				const characters = participants.map((avatar) => {
-					const character = context().characters
-						.find(char => char.avatar === avatar);
-
-					return character ? character.name : null;
-				});
-
-				const charactersFiltered = characters.filter(name => name !== null);
-
-				if (charactersFiltered.length > 0)
-					return charactersFiltered.join(', ');
-
-				return '';
-			},
-			category: category.NAMES,
-			description: 'Returns the names of characters present, detected by Presence, in the current group chat.',
-			returns: 'list of character names'
-		});
-	}
+	await loadSettingsMenu();
+	await initializeFeatures();
+	presenceMacros.initialize();
+    eventListeners.initialize();
+    slashCommands.initialize();
 });

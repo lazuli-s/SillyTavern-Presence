@@ -9,7 +9,7 @@ import {
     eventSource,
 } from "../../index.js";
 
-export function startListeners() {
+export function initialize() {
     eventSource.on(eventTypes.CHAT_CHANGED, async function (...args) {
         log("CHAT_CHANGED", args);
 
