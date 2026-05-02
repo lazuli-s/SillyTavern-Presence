@@ -179,7 +179,7 @@ async function commandReplace({ name = "", replace = "", forget = true, forceNam
     const doForget = String(forget).trim().toLowerCase() === "true";
     const messages_number = String(message_id).trim().includes("-") ? stringToRange(message_id, 0, chat.length - 1) : Number(message_id);
 
-    if (!characterName.length || !replaceName.length) return toastr.warning(t`Character name or replace not valid`);
+    if (!characterName.length || !replaceName.length) return toastr.warning(t`Character name or replacer are not valid`);
 
     const character = forceName ? characterName : characters.find((character) => searchCharNameOrAvatar(character, characterName))?.avatar;
     const replacer = characters.find((character) => searchCharNameOrAvatar(character, replaceName))?.avatar;
