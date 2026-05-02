@@ -1,8 +1,16 @@
-import { log, onChatChanged, onGenerationAfterCommands, onNewMessage, toggleVisibilityAllMessages, isActive } from "../../index.js";
-import { event_types, eventSource } from "../../../../../../script.js";
+import {
+    log,
+    onChatChanged,
+    onGenerationAfterCommands,
+    onNewMessage,
+    toggleVisibilityAllMessages,
+    isActive,
+    eventTypes,
+    eventSource,
+} from "../../index.js";
 
 export function startListeners() {
-    eventSource.on(event_types.CHAT_CHANGED, async function (...args) {
+    eventSource.on(eventTypes.CHAT_CHANGED, async function (...args) {
         log("CHAT_CHANGED", args);
 
         if (!isActive()) return;
@@ -10,7 +18,7 @@ export function startListeners() {
         onChatChanged({forceUpdate: true});
     });
 
-    eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async function (...args) {
+    eventSource.on(eventTypes.CHARACTER_MESSAGE_RENDERED, async function (...args) {
         log("CHARACTER_MESSAGE_RENDERED", args);
 
         if (!isActive()) return;
@@ -18,7 +26,7 @@ export function startListeners() {
         onChatChanged();
     });
 
-    eventSource.on(event_types.USER_MESSAGE_RENDERED, async function (...args) {
+    eventSource.on(eventTypes.USER_MESSAGE_RENDERED, async function (...args) {
         log("USER_MESSAGE_RENDERED", args);
 
         if (!isActive()) return;
@@ -26,7 +34,7 @@ export function startListeners() {
         onChatChanged();
     });
 
-    eventSource.makeFirst(event_types.GENERATION_AFTER_COMMANDS, async function (...args) {
+    eventSource.makeFirst(eventTypes.GENERATION_AFTER_COMMANDS, async function (...args) {
         log("GENERATION_AFTER_COMMANDS", args);
 
         if (!isActive()) return;
@@ -34,7 +42,7 @@ export function startListeners() {
         await onGenerationAfterCommands(...args);
     });
 
-    eventSource.makeFirst(event_types.MESSAGE_RECEIVED, async function (...args) {
+    eventSource.makeFirst(eventTypes.MESSAGE_RECEIVED, async function (...args) {
         log("MESSAGE_RECEIVED", args);
 
         if (!isActive()) return;
@@ -43,7 +51,7 @@ export function startListeners() {
         await toggleVisibilityAllMessages(true);
     });
 
-    eventSource.makeLast(event_types.MESSAGE_SENT, async function (...args) {
+    eventSource.makeLast(eventTypes.MESSAGE_SENT, async function (...args) {
         log("MESSAGE_SENT", args);
 
         if (!isActive()) return;
@@ -51,7 +59,7 @@ export function startListeners() {
         await onNewMessage(...args);
     });
 
-    eventSource.makeFirst(event_types.GENERATION_STOPPED, async function (...args) {
+    eventSource.makeFirst(eventTypes.GENERATION_STOPPED, async function (...args) {
         log("GENERATION_STOPPED", args);
 
         if (!isActive()) return;

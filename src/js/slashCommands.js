@@ -1,11 +1,25 @@
-import { addPresenceTrackerToMessages, debug, getCurrentParticipants, isActive, log, warn } from "../../index.js";
-import { characters, chat, saveChatDebounced } from "../../../../../../script.js";
-import { SlashCommand } from "../../../../../slash-commands/SlashCommand.js";
-import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from "../../../../../slash-commands/SlashCommandArgument.js";
+import {
+    log,
+    debug,
+    warn,
+    addPresenceTrackerToMessages,
+    getCurrentParticipants,
+    context,
+    isActive,
+    saveChatDebounced,
+    t,
+} from "../../index.js";
+
 import { commonEnumProviders } from "../../../../../slash-commands/SlashCommandCommonEnumsProvider.js";
-import { SlashCommandParser } from "../../../../../slash-commands/SlashCommandParser.js";
 import { stringToRange } from "../../../../../utils.js";
-import { t } from "../../../../../i18n.js";
+
+const {
+    SlashCommand,
+    SlashCommandParser,
+    SlashCommandArgument,
+    SlashCommandNamedArgument,
+    ARGUMENT_TYPE,
+} = context();
 
 /**
  * @typedef {ChatMessage & { present?: string[], presence_manually_hidden?: boolean }} ChatMessageExtended
@@ -16,6 +30,7 @@ import { t } from "../../../../../i18n.js";
 async function commandForget(namedArgs, message_id) {
     if (!isActive()) return;
 
+    const {characters, chat} = context();
     const charName = String(namedArgs.name).trim();
     const messages_number = String(message_id).trim().includes("-") ? stringToRange(message_id, 0, chat.length - 1) : Number(message_id);
 
@@ -66,6 +81,7 @@ async function commandForgetAll(namedArgs, charName) {
     if (!isActive()) return;
     if (charName.length == 0) return;
 
+    const {characters, chat} = context();
     const char = characters.find((c) => c.name == charName).avatar;
 
     /** @type {ChatMessageExtended[]} */
@@ -86,6 +102,7 @@ async function commandForgetAll(namedArgs, charName) {
 async function commandRemember(namedArgs, message_id) {
     if (!isActive()) return;
 
+    const {characters, chat} = context();
     const charName = String(namedArgs.name).trim();
     const messages_number = String(message_id).trim().includes("-") ? stringToRange(message_id, 0, chat.length - 1) : Number(message_id);
 
@@ -136,6 +153,7 @@ async function commandRememberAll(namedArgs, charName) {
     if (!isActive()) return;
     if (charName.length == 0) return;
 
+    const {characters, chat} = context();
     const char = characters.find((c) => c.name == charName).avatar;
 
     /** @type {ChatMessageExtended[]} */
@@ -174,6 +192,7 @@ function searchCharNameOrAvatar(char, search) {
 async function commandReplace({ name = "", replace = "", forget = true, forceName = false } = {}, message_id) {
     if (!isActive()) return;
 
+    const {characters, chat} = context();
     const characterName = String(name).trim();
     const replaceName = String(replace).trim();
     const doForget = String(forget).trim().toLowerCase() === "true";
@@ -246,6 +265,8 @@ async function commandCopy({ source_index = "", target_index = "" } = {}) {
     if (isNaN(targetIndex)) return toastr.warning(t`target_index is not valid`);
     if (sourceIndex === targetIndex) return;
 
+    const {chat} = context();
+
     /** @type {ChatMessageExtended} */
     const sourceMess = chat[sourceIndex];
 
@@ -271,6 +292,7 @@ async function commandCopy({ source_index = "", target_index = "" } = {}) {
 async function commandLockHiddenMessages({ name = "", unlock = false } = {}, message_id = "") {
     if (!isActive()) return;
 
+    const {chat} = context();
     const messageID = String(message_id).trim();
     const characterName = String(name).trim();
     const doLock = String(unlock).trim().toLowerCase() !== "true";
@@ -311,6 +333,8 @@ async function commandLockHiddenMessages({ name = "", unlock = false } = {}, mes
 async function commandForceAllPresent(namedArgs, message_id) {
     if (!isActive()) return;
 
+    const {chat} = context();
+
     /** @type {ChatMessageExtended[]} */
     const chat_messages = chat;
     const members = (await getCurrentParticipants()).members;
@@ -345,6 +369,8 @@ async function commandForceAllPresent(namedArgs, message_id) {
 
 async function commandForceNonePresent(namedArgs, message_id) {
     if (!isActive()) return;
+
+    const {chat} = context();
 
     /** @type {ChatMessageExtended[]} */
     const chat_messages = chat;

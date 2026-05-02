@@ -1,9 +1,19 @@
-import {characters, chat, chat_metadata, eventSource, event_types, saveChatDebounced, saveSettingsDebounced} from "../../../../script.js";
-import {groups, is_group_generating, selected_group} from "../../../../scripts/group-chats.js";
+import {saveChatDebounced} from "../../../../script.js";
+import {is_group_generating} from "../../../../scripts/group-chats.js";
 import {hideChatMessageRange} from "../../../chats.js";
-import {extension_settings} from "../../../extensions.js";
 import * as eventListeners from "./src/js/eventListeners.js";
 import * as slashCommands from "./src/js/slashCommands.js";
+
+export {
+	context,
+	log,
+	warn,
+	debug,
+	eventTypes,
+	eventSource,
+	saveChatDebounced,
+	t,
+}
 
 // @ts-check
 
@@ -11,10 +21,21 @@ import * as slashCommands from "./src/js/slashCommands.js";
  * @typedef {ChatMessage & {present?: string[]; presence_manually_hidden?: boolean;}} ChatMessageExtended
  */
 
+const context = SillyTavern.getContext;
+
+const {
+	macros,
+	eventTypes,
+	eventSource,
+	saveSettingsDebounced,
+	extensionSettings: extension_settings,
+	saveMetadataDebounced,
+	t
+} = context();
+
 const extensionName = "Presence";
 const extensionNameLong = `SillyTavern-${extensionName}`;
 const extensionFolderPath = `scripts/extensions/third-party/${extensionNameLong}`;
-const context = SillyTavern.getContext;
 const extensionSettings = extension_settings[extensionName];
 const defaultSettings = {
 	enabled: true,
@@ -26,22 +47,17 @@ const defaultSettings = {
     disableTransition: false
 };
 
-const {
-	eventTypes,
-	macros
-} = context();
-
 // * Debug Methods
 
-export function log(...msg) {
+function log(...msg) {
     if (extensionSettings.debugMode) console.log("[" + extensionName + "]", ...msg)
 }
 
-export function warn(...msg) {
+function warn(...msg) {
     console.warn("[" + extensionName + " Warning]", ...msg)
 }
 
-export function debug(...msg) {
+function debug(...msg) {
 	if (extensionSettings.debugMode) console.debug("[" + extensionName + " debug]", ...msg);
 }
 
@@ -75,12 +91,46 @@ function destroyElement(element) {
 	elem.remove();
 }
 
+const HTML_TEMPLATES = {
+	/**
+     * @typedef {Object} HTMLTemplateGetOptions
+     * @property {boolean} [clone]
+     *
+     * @param {string} [fileName]
+     * @param {HTMLTemplateGetOptions} [options]
+     * @returns {Promise<JQuery<HTMLElement>>}
+     */
+    get: async function(fileName = 'settings', {clone = false} = {}) {
+		if (!HTML_TEMPLATES[fileName]) {
+            await $.get(`${extensionFolderPath}/html/${fileName}.html`)
+                .done(function(response) {
+                    HTML_TEMPLATES[fileName] = $(response);
+                })
+                .fail(function(jqXHR, textStatus, errorThrown) {
+                    ExtensionName.error({jqXHR, textStatus, errorThrown});
+                });
+        }
+
+        const $file = HTML_TEMPLATES[fileName];
+
+        if (!$file) {
+            toastr.warning(t`HTML template could not be loaded`, extensionName);
+            return $();
+        }
+
+		return clone ?
+            $file.clone() :
+            $file;
+    }
+};
+
 export function isActive() {
-	return selected_group != null && extensionSettings.enabled;
+	return context().groupId != null && extensionSettings.enabled;
 }
 
 export function getCurrentParticipants() {
-	const group = groups.find((g) => g.id == selected_group);
+	const {groupId, groups, chatMetadata} = context();
+	const group = groups.find((g) => g.id == groupId);
 
 	if (!group) return { members: [], present: [] };
 
@@ -91,9 +141,9 @@ export function getCurrentParticipants() {
 	if (!extensionSettings.includeMuted)
 		active = active.filter(char => !group.disabled_members.includes(char));
 
-	if (!chat_metadata.ignore_presence) chat_metadata.ignore_presence = [];
+	if (!chatMetadata.ignore_presence) chatMetadata.ignore_presence = [];
 
-	chat_metadata.ignore_presence.forEach(char => {
+	chatMetadata.ignore_presence.forEach(char => {
 		if (active.includes(char)) active.splice(active.indexOf(char), 1);
 	});
 
@@ -103,10 +153,11 @@ export function getCurrentParticipants() {
 export async function onNewMessage(mesId) {
 	if (!isActive()) return;
 
-	/** @type {ChatMessageExtended} */
+	/** @type {ChatMessageExtended[]} */
+	const chat = context().chat;
 	const mes = chat[mesId];
     const participants = await getCurrentParticipants();
-	const this_chid = context().characterId;
+	const { this_chid, characters } = context();
 
 	const thumbnail = new URL(mes.force_avatar, window.location.origin);
 	const urlType = thumbnail?.searchParams?.get('type') ?? '';
@@ -156,6 +207,7 @@ export async function addPresenceTrackerToMessages(refresh = false) {
 
 	let selector = "#chat .mes:not(.smallSysMes,[has_presence_tracker=true])";
     const elements = $(selector).toArray();
+	const chat = context().chat;
 
     for (const element of elements) {
         const mesId = $(element).attr("mesid");
@@ -237,16 +289,16 @@ export async function onGenerationAfterCommands(type, config, dryRun) {
 	if (!isActive() && !is_group_generating) return;
 
 	async function draftHandler(...args) {
-        eventSource.removeListener(event_types.GENERATION_STOPPED, stopHandler);
+        eventSource.removeListener(eventTypes.GENERATION_STOPPED, stopHandler);
 		return await onGroupMemberDrafted(type, args[0]);
 	}
 
 	async function stopHandler() {
-		eventSource.removeListener(event_types.GROUP_MEMBER_DRAFTED, draftHandler);
+		eventSource.removeListener(eventTypes.GROUP_MEMBER_DRAFTED, draftHandler);
 	}
 
-	eventSource.once(event_types.GROUP_MEMBER_DRAFTED, draftHandler);
-	eventSource.once(event_types.GENERATION_STOPPED,stopHandler);
+	eventSource.once(eventTypes.GROUP_MEMBER_DRAFTED, draftHandler);
+	eventSource.once(eventTypes.GENERATION_STOPPED,stopHandler);
 }
 
 export async function toggleVisibilityAllMessages(state = true) {
@@ -257,7 +309,10 @@ export async function toggleVisibilityAllMessages(state = true) {
 	/** @type {Array<{start?: number, end?: number}>} */
 	const message_id_chunks = [{}];
 
-	chat.forEach((/** @type {ChatMessageExtended} */mess, i) => {
+	/** @type {ChatMessageExtended[]} */
+	const chat = context().chat;
+
+	chat.forEach((mess, i) => {
 		const m = { id: i, presence_manually_hidden: mess.presence_manually_hidden ?? false };
 		const do_modify = !m.presence_manually_hidden;
 
@@ -285,7 +340,7 @@ export async function toggleVisibilityAllMessages(state = true) {
 
 async function updateMessagePresence(mesId, member, isPresent) {
 	/** @type {ChatMessageExtended} */
-	const mes = chat[mesId];
+	const mes = context().chat[mesId];
 	if (!mes.present) mes.present = [];
 
 	if (isPresent) {
@@ -298,17 +353,20 @@ async function updateMessagePresence(mesId, member, isPresent) {
 	saveChatDebounced();
 }
 
-async function onGroupMemberDrafted(type, charId) {
+function onGroupMemberDrafted(type, charId) {
 	if (!isActive()) return;
 
-	const char = characters[charId].avatar;
-	const lastMessage = await chat[chat.length - 1];
+	const { chat, characters, chatMetadata } = context();
+
+	/** @type {ChatMessageExtended} */
+	const lastMessage = chat[chat.length - 1];
 	const isUserContinue = (type === "continue" && lastMessage.is_user);
+	const char = characters[charId].avatar;
 
 	if (
 		type == "impersonate" ||
 		isUserContinue ||
-		chat_metadata.ignore_presence?.includes(char)
+		chatMetadata.ignore_presence?.includes(char)
 	) {
         toggleVisibilityAllMessages(true);
 	} else {
@@ -354,15 +412,16 @@ async function onGroupMemberDrafted(type, charId) {
 async function togglePresenceTracking(e) {
 	const target = $(e.target).closest(".group_member");
 	const charId = target.data("chid");
-	const charAvatar = characters[charId].avatar;
+	const charAvatar = context().characters[charId].avatar;
+	const chatMetadata = context().chatMetadata;
 
-	const ignorePresence = chat_metadata.ignore_presence ?? [];
+	const ignorePresence = chatMetadata.ignore_presence ?? [];
 
 	if (!ignorePresence.includes(charAvatar)) {
-		if (!chat_metadata.ignore_presence) chat_metadata.ignore_presence = [];
-		chat_metadata.ignore_presence.push(charAvatar);
+		if (!chatMetadata.ignore_presence) chatMetadata.ignore_presence = [];
+		chatMetadata.ignore_presence.push(charAvatar);
 	} else {
-		chat_metadata.ignore_presence = ignorePresence.filter((c) => c != charAvatar);
+		chatMetadata.ignore_presence = ignorePresence.filter((c) => c != charAvatar);
 	}
 
 	saveChatDebounced();
@@ -375,7 +434,7 @@ function toggleMessagesManuallyHiddenFlag(e) {
 	const isHiding = $(e.target).hasClass("mes_hide");
 
 	/** @type {ChatMessageExtended} */
-	const mes = chat[mesId];
+	const mes = context().chat[mesId];
 
 	mes.presence_manually_hidden = isHiding;
 
@@ -402,8 +461,10 @@ async function updatePresenceTrackingButton(member) {
 
 	const target = member.find(".ignore_presence_toggle");
 	const charId = member.data("chid");
+	const characters = context().characters;
+	const chatMetadata = context().chatMetadata;
 
-	if (!chat_metadata?.ignore_presence?.includes(characters[charId].avatar)) {
+	if (!chatMetadata?.ignore_presence?.includes(characters[charId].avatar)) {
 		target.removeClass("active");
 	} else {
 		target.addClass("active");
@@ -421,8 +482,10 @@ eventSource.once(eventTypes.APP_INITIALIZED, async function () {
 
 	const groupMemberList = document.getElementById("rm_group_members");
 	const observer = new MutationObserver((mutationList, observer) => {
+		const chatMetadata = context().chatMetadata;
+
 		for (const mutation of mutationList) {
-			if (mutation.type === "childList" && mutation.addedNodes.length > 0 && chat_metadata.ignore_presence) {
+			if (mutation.type === "childList" && mutation.addedNodes.length > 0 && chatMetadata.ignore_presence) {
 				mutation.addedNodes.forEach((node) => {
 					updatePresenceTrackingButton($(node));
 				});
