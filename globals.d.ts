@@ -14,4 +14,9 @@ declare namespace Presence {
         present?: string[];
         presence_manually_hidden?: boolean;
     };
+
+    type MessageIdChunk = {
+        start?: number;
+        end?: number;
+    };
 };

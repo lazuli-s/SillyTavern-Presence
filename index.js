@@ -1,6 +1,5 @@
 import {saveChatDebounced} from '../../../../script.js';
 import {is_group_generating} from '../../../../scripts/group-chats.js';
-import {hideChatMessageRange} from '../../../chats.js';
 import * as eventListeners from './src/js/eventListeners.js';
 import * as slashCommands from './src/js/slashCommands.js';
 import * as presenceMacros from './src/js/macros.js';
@@ -22,6 +21,7 @@ export {
 
 /** @typedef {Presence.ChatMessageExtended} ChatMessageExtended */
 /** @typedef {Presence.ExtensionSettings} ExtensionSettings */
+/** @typedef {Presence.MessageIdChunk} MessageIdChunk */
 
 const context = SillyTavern.getContext;
 
@@ -30,6 +30,7 @@ const {
 	eventSource,
 	saveSettingsDebounced,
 	extensionSettings: extension_settings,
+	swipe,
 	saveMetadataDebounced,
 	t
 } = context();
@@ -58,7 +59,7 @@ const MetadataMap = {
 	universalTrackerOn: 'universal_tracker_on',
 }
 
-// * Debug Methods
+// * MARK:Debug
 
 /**
  * @param {...any} messages
@@ -81,7 +82,7 @@ function debug(...messages) {
 	if (extensionSettings.debug) console.debug(`[${extensionName} Debug]`, ...messages);
 }
 
-// * Extension Methods
+// * MARK:Utility
 
 /** Destroys an element and all data associated with it
     @param {String|HTMLElement|JQuery<any>} element
@@ -147,6 +148,8 @@ const HTML_TEMPLATES = {
 function isActive() {
 	return context().groupId != null && extensionSettings.enabled;
 }
+
+// * MARK:Features
 
 function getCurrentParticipants() {
 	const {groupId, groups, chatMetadata} = context();
@@ -321,40 +324,108 @@ export async function onGenerationAfterCommands(type, config, dryRun) {
 	eventSource.once(eventTypes.GENERATION_STOPPED,stopHandler);
 }
 
-export async function toggleVisibilityAllMessages(state = true) {
-	if (!isActive()) return;
+/**
+ * @param {ChatMessageExtended} message
+ * @param {Object} [options]
+ * @param {string|null} [options.avatar] If provided, the avatar of the character for which the message's presence should be checked.
+ * @returns {boolean} Whether the message should be hidden or not according
+ */
+function canToggleHideMessage(message, {avatar = null} = {}) {
+	const present = message.present ?? [];
+	const charIsPresent = present.includes(avatar) || present.includes('presence_universal_tracker');
 
-	let current_chunk = 0;
+	const hasManuallyHiddenFlag = 'presence_manually_hidden' in message;
+	const forceManualToggleOff = message.presence_manually_hidden && !message.is_system;
 
-	/** @type {Array<{start?: number, end?: number}>} */
-	const message_id_chunks = [{}];
+	if (forceManualToggleOff && hasManuallyHiddenFlag)
+		message.presence_manually_hidden = false;
 
+	if (message.presence_manually_hidden) return false;
+	if (!charIsPresent && avatar !== null) return false;
+
+	return true;
+}
+
+/**
+ * @param {string|null} [avatar]
+ * @returns {MessageIdChunk[]} An array of message ID ranges that can be hidden by Presence.
+ */
+function getMessageIdChunks(avatar = null) {
 	/** @type {ChatMessageExtended[]} */
 	const chat = context().chat;
 
-	chat.forEach((mess, i) => {
-		const m = { id: i, presence_manually_hidden: mess.presence_manually_hidden ?? false };
-		const do_modify = !m.presence_manually_hidden;
+	if (!chat || !chat.length) return [];
 
-		if (!mess.is_system && mess.presence_manually_hidden) mess.presence_manually_hidden = false;
+	/** @type {MessageIdChunk[]} */
+	const messageIdChunks = [{}];
+	let current_chunk = 0;
 
-		if (!do_modify) return false;
+	for (const [mesId, mess] of chat.entries()) {
+		console.log({mesId, mess, avatar, canToggle: canToggleHideMessage(mess, {avatar})});
+		if (!canToggleHideMessage(mess, {avatar})) continue;
 
-		if (message_id_chunks[current_chunk].start === undefined) {
-			message_id_chunks[current_chunk].start = m.id;
-			message_id_chunks[current_chunk].end = m.id;
-		} else if (message_id_chunks[current_chunk].end + 1 === m.id) {
-			message_id_chunks[current_chunk].end = m.id;
+		const chunk = messageIdChunks[current_chunk];
+		const hasStart = 'start' in chunk;
+
+		if (!hasStart) {
+			chunk.start = mesId;
+			chunk.end = mesId;
+		} else if (chunk.end + 1 === mesId) {
+			chunk.end = mesId;
 		} else {
 			current_chunk++;
-			message_id_chunks.push({});
-			message_id_chunks[current_chunk].start = m.id;
-			message_id_chunks[current_chunk].end = m.id;
+			messageIdChunks.push({
+				start: mesId,
+				end: mesId,
+			});
 		}
-	});
+	};
 
-	for (const id_chunk of message_id_chunks) {
-		hideChatMessageRange(id_chunk.start, id_chunk.end, state);
+	return messageIdChunks;
+}
+
+/**
+ * Mark a range of messages as hidden ("is_system") or not.
+ * @param {MessageIdChunk} idChunk An object with "start" and "end" properties indicating the range of message IDs to hide/unhide.
+ * @param {boolean} unhide If true, unhide the messages instead.
+ * @param {boolean} [saveChat] Whether to save the chat after toggling message visibility.
+ * @returns {Promise<void>}
+ */
+export async function hideChatMessageRange(idChunk, unhide, saveChat = true) {
+	let { start, end } = idChunk;
+
+	if (isNaN(start)) return;
+	if (!end) end = start;
+
+	const hide = !unhide;
+	const chat = context().chat;
+
+	for (let messageId = start; messageId <= end; messageId++) {
+		const message = chat[messageId];
+
+		if (!message) continue;
+
+		message.is_system = hide;
+
+		const messageBlock = $(`.mes[mesid="${messageId}"]`);
+
+		if (!messageBlock.length) continue;
+
+		messageBlock.attr('is_system', String(hide));
+	}
+
+	swipe.refresh();
+	if (saveChat) saveChatDebounced();
+}
+
+export async function toggleVisibilityAllMessages(unhide = false, saveChat = true) {
+	if (!isActive()) return;
+
+	const messageIdChunks = getMessageIdChunks();
+
+	for (const idChunk of messageIdChunks) {
+		log({idChunk, unhide});
+		hideChatMessageRange(idChunk, unhide, saveChat);
 	}
 }
 
@@ -381,51 +452,29 @@ function onGroupMemberDrafted(type, charId) {
 	/** @type {ChatMessageExtended} */
 	const lastMessage = chat[chat.length - 1];
 	const isUserContinue = (type === "continue" && lastMessage.is_user);
-	const char = characters[charId].avatar;
+	const avatar = characters[charId].avatar || null;
 
 	if (
 		type == "impersonate" ||
 		isUserContinue ||
-		chatMetadata.ignore_presence?.includes(char)
+		chatMetadata.ignore_presence?.includes(avatar)
 	) {
         toggleVisibilityAllMessages(true);
 	} else {
-		toggleVisibilityAllMessages(false);
+		toggleVisibilityAllMessages(false, false);
 
-        let current_chunk = 0;
+		const messageIdChunks = getMessageIdChunks(avatar);
 
-		/** @type {Array<{start?: number, end?: number}>} */
-		const message_id_chunks = [{}];
-
-        chat.forEach((/** @type {ChatMessageExtended} */mess, i) => {
-            const m = { id: i, present: mess.present ?? [] };
-            const unhide = m.present.includes(char) || m.present.includes("presence_universal_tracker");
-
-			if (!mess.is_system && mess.presence_manually_hidden) mess.presence_manually_hidden = false;
-
-            if (!unhide || mess.presence_manually_hidden) return false;
-
-            if (message_id_chunks[current_chunk].start === undefined) {
-                message_id_chunks[current_chunk].start = m.id;
-                message_id_chunks[current_chunk].end = m.id;
-            } else if (message_id_chunks[current_chunk].end + 1 === m.id) {
-                message_id_chunks[current_chunk].end = m.id;
-            } else {
-                current_chunk++;
-                message_id_chunks.push({});
-                message_id_chunks[current_chunk].start = m.id;
-                message_id_chunks[current_chunk].end = m.id;
-            }
-        });
-
-		for (const id_chunk of message_id_chunks) {
-			hideChatMessageRange(id_chunk.start, id_chunk.end, true);
+		for (const idChunk of messageIdChunks) {
+			hideChatMessageRange(idChunk, true, false);
 		}
 
         if (extensionSettings.seeLast) {
             const lastMessageID = chat.length - 1;
-            hideChatMessageRange(lastMessageID, lastMessageID, true);
+            hideChatMessageRange({start: lastMessageID}, true, false);
         }
+
+		saveChatDebounced();
 	}
 }
 
@@ -475,6 +524,12 @@ async function updatePresenceTrackingButton(member) {
 		target.addClass("active");
 	}
 }
+
+globalThis.Presence = {
+	toggleVisibilityAllMessages,
+	hideChatMessageRange,
+	getMessageIdChunks,
+};
 
 // * MARK:Extension Settings
 
