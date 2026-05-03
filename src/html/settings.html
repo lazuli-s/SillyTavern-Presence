@@ -1,0 +1,61 @@
+<div id="presence-settings" class="extension_container presence-custom-css">
+	<div class="inline-drawer">
+		<div class="inline-drawer-toggle inline-drawer-header">
+			<b>Presence</b>
+			<div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+		</div>
+
+		<div id="presence-settings-window" class="inline-drawer-content p-15px">
+			<div class="flex-container flex-column separator-bottom">
+				<b>Settings</b>
+
+				<label class="flex-container">
+					<input id="presence-enabled" presence-setting="enabled" type="checkbox" />
+					<span>Enable/Disable the extension</span>
+				</label>
+
+				<label class="flex-container">
+					<input id="presence-see-last" presence-setting="seeLast" type="checkbox" />
+					<span>Characters always see the message they are replying to</span>
+				</label>
+
+				<label class="flex-container">
+					<input id="presence-include-muted" presence-setting="includeMuted" type="checkbox" />
+					<span>Muted characters will be included as present in new messages</span>
+				</label>
+			</div>
+
+			<div class="flex-container flex-column separator-bottom">
+				<b>UI Customization</b>
+
+				<label class="flex-container">
+					<input id="presence-disable-transition" presence-setting="disableTransition" type="checkbox" />
+					<span>Disable animations for the presence tracker</span>
+				</label>
+
+				<div class="flex-container flex-column">
+					<label for="presence-location">Message Presence Tracker Location</label>
+					<small>Select the location for the presence tracker on messages</small>
+					<select class="text_pole flex1 m-0" id="presence-location" presence-setting="location">
+						<option value="top">Top</option>
+						<option value="bottom">Bottom</option>
+					</select>
+				</div>
+			</div>
+
+			<div class="flex-container flex-column">
+				<b>Debug settings</b>
+
+				<div class="flex-container">
+					<input id="presence-check-configuration" class="menu_button" type="button" value="Check Configuration" />
+					<span>Print the configuration values ​​through the console</span>
+				</div>
+
+				<label class="flex-container">
+					<input id="presence-debug" presence-setting="debug" type="checkbox" />
+					<span>Enable/Disable the debug console logs</span>
+				</label>
+			</div>
+		</div>
+	</div>
+</div>
