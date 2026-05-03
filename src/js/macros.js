@@ -1,6 +1,7 @@
 import {
     context,
-    getCurrentParticipants
+    getCurrentParticipants,
+    isActive,
 } from '../../index.js';
 
 export {
@@ -18,6 +19,8 @@ function initialize() {
 
     macros.register('groupPresent', {
         handler: function () {
+            if (!isActive()) return '';
+
             const participants = getCurrentParticipants().present;
             const characters = participants.map((avatar) => {
                 const character = context().characters.find(char => char.avatar === avatar);
