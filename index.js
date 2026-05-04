@@ -40,7 +40,7 @@ const extensionName = 'Presence';
 const extensionFullName = `SillyTavern-${extensionName}`;
 const metadataName = extensionName.toLowerCase().replaceAll('-', '_');
 const htmlSuffix = extensionName.toLowerCase();
-const extensionFolderPath = `scripts/extensions/third-party/${extensionFullName}`;
+const extensionFolderPath = new URL('.', import.meta.url).pathname.replace(/^\//, '').replace(/\/$/, '');
 
 /** @type {ExtensionSettings} */
 const extensionSettings = extension_settings[extensionName];
@@ -128,7 +128,7 @@ const HTML_TEMPLATES = {
                     HTML_TEMPLATES[fileName] = $(response);
                 })
                 .fail(function(jqXHR, textStatus, errorThrown) {
-                    ExtensionName.error({jqXHR, textStatus, errorThrown});
+                    warn('Failed to load HTML template:', textStatus, errorThrown);
                 });
         }
 
